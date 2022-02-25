@@ -5,7 +5,7 @@
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let app = eframe_template::ZoomApp::default();
+    let app = zchat_interperter::ZoomApp::default();
     let native_options = eframe::NativeOptions::default();
     //App::clear_color(1);
     eframe::run_native(Box::new(app), native_options);

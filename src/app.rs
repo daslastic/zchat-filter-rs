@@ -1,6 +1,6 @@
 use eframe::{egui::{self, Visuals}, epi};
 use native_dialog::{FileDialog, MessageDialog, MessageType};
-use std::{fs::{self, FileType}, fmt::Debug, path::PathBuf};
+use std::{fs::{self, FileType, DirEntry}, path::PathBuf};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
@@ -66,13 +66,23 @@ impl ZoomApp {
                     for meeting in fs::read_dir(zoom_meeting.path()).unwrap() {
                         let meeting = meeting.unwrap();
                         if meeting.file_name().into_string().unwrap() == "meeting_saved_chat.txt" {
-                            println!("{:?}", meeting.file_name());
+                            
+                            self.interpret_file(meeting.path());
+
                         }
                     }
 
                 }
             }
         }
+    }
+
+    fn interpret_file(&mut self, path: PathBuf) {
+
+        let file = fs::File::open(path).unwrap();
+
+        println!("{:?}", file);
+
     }
 }
 
@@ -120,8 +130,13 @@ impl epi::App for ZoomApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Select Chat Folder").clicked() {
-
+                        self.open_folder();
                     }
+                    if ui.button("Quit").clicked() {
+                        frame.quit();
+                    }
+                });
+                ui.menu_button("Preferences", |ui| {
                     if ui.button("Change Theme").clicked() {
                         match self.theme {
                             Theme::Dark => {
@@ -131,9 +146,6 @@ impl epi::App for ZoomApp {
                                 self.swap_theme(ctx, Theme::Dark);
                             },
                         }
-                    }
-                    if ui.button("Quit").clicked() {
-                        frame.quit();
                     }
                 });
             });
