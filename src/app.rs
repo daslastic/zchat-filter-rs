@@ -1,6 +1,6 @@
 use eframe::{egui::{self, Visuals}, epi};
 use native_dialog::{FileDialog, MessageDialog, MessageType};
-use std::{fs::{self, FileType, DirEntry}, path::PathBuf};
+use std::{fs::{self, FileType}, path::PathBuf, io::{self, BufRead}, collections::HashMap};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
@@ -11,8 +11,20 @@ enum Theme {
     Light
 }
 
+pub struct Student {
+    pub name: String,
+    pub messeges: Vec<Messege>,
+}
+
+pub struct Messege {
+    pub msg: String,
+    pub time: String,
+    pub day: String,
+}
+
 pub struct ZoomApp {
     theme: Theme,
+    student_map: HashMap<String, Student>,
 }
 
 impl ZoomApp {
@@ -55,41 +67,107 @@ impl ZoomApp {
         } 
     }
 
-    fn set_students(&mut self, path: PathBuf) {
+    fn set_students(&mut self, path: PathBuf) -> bool {
         //                                       we can saftely unwrap it as long as it was selected with FileDialog
         for zoom_meeting in fs::read_dir(path).unwrap() {
             if zoom_meeting.is_ok() {
                 let zoom_meeting = zoom_meeting.unwrap();
                 // check if it is a folder
                 if FileType::is_dir(&zoom_meeting.file_type().unwrap()) {
+                    let teacher = &zoom_meeting.file_name();
+                    let teacher = teacher.to_str();
+
+                    if teacher.is_none() {
+                        return false;
+                    }
+
+                    // idk rust well enough to use its iterators to do this
+                    let teacher = teacher.unwrap();
+                    let mut teacher_buf = String::new();
+
+                    let mut spaces = 0;
+                    for c in teacher.chars() {
+                        // if spaces is more then two we know it's the teachers name
+                        if spaces >= 2 {
+                            teacher_buf.push(c);
+                        } else if c == ' ' {
+                            spaces += 1;
+                        }
+                    }
+
+                    // remove the end
+                    let teacher = &teacher_buf.replace("'s Personal Meeting Room", "");
+
                     // loop through all the text documents
                     for meeting in fs::read_dir(zoom_meeting.path()).unwrap() {
                         let meeting = meeting.unwrap();
                         if meeting.file_name().into_string().unwrap() == "meeting_saved_chat.txt" {
                             
-                            self.interpret_file(meeting.path());
+                            self.interpret_file(meeting.path(), &teacher);
 
                         }
                     }
-
                 }
             }
         }
+        
+        true
     }
 
-    fn interpret_file(&mut self, path: PathBuf) {
+    fn interpret_file(&mut self, path: PathBuf, teachers_name: &str) {
 
-        let file = fs::File::open(path).unwrap();
+        let file = fs::File::open(&path).unwrap();
 
-        println!("{:?}", file);
+        let metadata = &file.metadata().unwrap();
+        let time: Option<String> = None;
 
+        if let Ok(day) = metadata.created() {
+            // time the file was created
+            //let datetime: OffsetDateTime = day.into();
+            //time = Some(datetime.format("%d/%m/%Y"))
+            println!("{:?}", day);
+        }
+
+        // read each lines to filter out only the students messeges
+        for line in io::BufReader::new(&file).lines() {
+            // a line
+            if line.is_ok() {
+                
+                let line = line.unwrap();
+
+                // read name
+                let mut name = String::new();
+                let mut is_filter = false;
+                
+                if !line.starts_with("    ") {
+                    let mut name_buf = String::new();
+                   
+                    for c in line.chars() {
+                        if c == 'm' {
+                            is_filter = true;
+                        } else if name_buf.ends_with(teachers_name) {
+                            name = name_buf.replace(teachers_name, "");
+                            break;
+                        } else if is_filter {
+                            name_buf.push(c);
+                        }
+                    }
+                } else if !name.is_empty() { // read a messege only if we know who said it  
+                    
+                }
+
+            }
+
+
+        }
     }
 }
 
 impl Default for ZoomApp {
     fn default() -> Self {
         Self {
-            theme: Theme::Light
+            theme: Theme::Light,
+            student_map: HashMap::new(),
         }
     }
 }
