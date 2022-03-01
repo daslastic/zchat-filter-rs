@@ -10,20 +10,16 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-eframe = "0.17.0" # Gives us egui, epi and web+native backends
+eframe = "0.17.0"
 native-dialog = "0.5.1"
 
 serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 default = []
-persistence = ["eframe/persistence", "serde"] # Enable if you want to persist app state on shutdown
+persistence = ["eframe/persistence", "serde"]
 
 [profile.release]
-opt-level = 2 # fast and small wasm
+opt-level = 2
 
 [patch.crates-io]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook = "0.1.6"
-tracing-wasm = "0.2"

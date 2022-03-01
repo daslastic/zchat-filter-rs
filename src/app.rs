@@ -1,6 +1,6 @@
 use eframe::{egui::{self, Visuals}, epi};
 use native_dialog::{FileDialog, MessageDialog, MessageType};
-use std::{fs::{self, FileType}, path::PathBuf, io::{self, BufRead}, collections::HashMap};
+use std::{fs::{self, FileType}, path::PathBuf, io::{self, BufRead}, collections::HashMap, cell::RefCell};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
@@ -11,33 +11,37 @@ enum Theme {
     Light
 }
 
-pub struct Student {
-    pub name: String,
-    pub messeges: Vec<Messege>,
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum State {
+    NonSelected,
+    ToSelect,
+    Selected,
+    NoOneFound,
 }
 
-pub struct Messege {
-    pub msg: String,
-    pub time: String,
-    pub day: String,
+struct Messege {
+    data: Vec<String>,
+    //date: String,
 }
 
 pub struct ZoomApp {
     theme: Theme,
-    student_map: HashMap<String, Student>,
+    student_map: HashMap<String, RefCell<Messege>>,
+    state: State,
 }
 
 impl ZoomApp {
-    fn swap_theme(&mut self, _ctx: &egui::Context, theme: Theme) {
+
+    fn swap_theme(&mut self, ctx: &egui::Context, theme: Theme) {
         self.theme = theme;
         match self.theme {
             Theme::Dark => {
                 let mut visuals = Visuals::dark();
                 visuals.override_text_color = Some(egui::color::Color32::WHITE);
-                _ctx.set_visuals(visuals);
+                ctx.set_visuals(visuals);
             },
             Theme::Light => {
-                _ctx.set_visuals(Visuals::light());
+                ctx.set_visuals(Visuals::light());
             },
         }
     }
@@ -71,6 +75,8 @@ impl ZoomApp {
         //                                       we can saftely unwrap it as long as it was selected with FileDialog
         for zoom_meeting in fs::read_dir(path).unwrap() {
             if zoom_meeting.is_ok() {
+                self.set_state(State::ToSelect);
+
                 let zoom_meeting = zoom_meeting.unwrap();
                 // check if it is a folder
                 if FileType::is_dir(&zoom_meeting.file_type().unwrap()) {
@@ -99,6 +105,7 @@ impl ZoomApp {
                     let teacher = &teacher_buf.replace("'s Personal Meeting Room", "");
 
                     // loop through all the text documents
+
                     for meeting in fs::read_dir(zoom_meeting.path()).unwrap() {
                         let meeting = meeting.unwrap();
                         if meeting.file_name().into_string().unwrap() == "meeting_saved_chat.txt" {
@@ -118,15 +125,7 @@ impl ZoomApp {
 
         let file = fs::File::open(&path).unwrap();
 
-        let metadata = &file.metadata().unwrap();
-        let time: Option<String> = None;
-
-        if let Ok(day) = metadata.created() {
-            // time the file was created
-            //let datetime: OffsetDateTime = day.into();
-            //time = Some(datetime.format("%d/%m/%Y"))
-            println!("{:?}", day);
-        }
+        // let metadata = &file.metadata().unwrap();
 
         // read each lines to filter out only the students messeges
         for line in io::BufReader::new(&file).lines() {
@@ -137,6 +136,7 @@ impl ZoomApp {
 
                 // read name
                 let mut name = String::new();
+                let mut msg = vec![];
                 let mut is_filter = false;
                 
                 if !line.starts_with("    ") {
@@ -146,20 +146,36 @@ impl ZoomApp {
                         if c == 'm' {
                             is_filter = true;
                         } else if name_buf.ends_with(teachers_name) {
-                            name = name_buf.replace(teachers_name, "");
+                            name_buf = name_buf.replace(teachers_name, "")
+                                               .replace("to", "");
+                            name = name_buf.trim().to_string();
                             break;
                         } else if is_filter {
                             name_buf.push(c);
                         }
                     }
                 } else if !name.is_empty() { // read a messege only if we know who said it  
-                    
+                    msg.push(line);
+                }
+
+                if name.len() > 0 {
+                    if self.student_map.contains_key(&name) {
+                        self.student_map.get(&name).unwrap().borrow_mut().data.append(&mut msg);
+                    } else {
+                        self.student_map.insert(name, RefCell::new(Messege { data: msg } ));
+                    }
                 }
 
             }
-
-
         }
+    }
+
+    fn set_state(&mut self, state: State) {
+        self.state = state;
+    }
+
+    fn get_state(&self) -> State {
+        self.state
     }
 }
 
@@ -168,6 +184,7 @@ impl Default for ZoomApp {
         Self {
             theme: Theme::Light,
             student_map: HashMap::new(),
+            state: State::NonSelected,
         }
     }
 }
@@ -182,27 +199,18 @@ impl epi::App for ZoomApp {
         &mut self,
         _ctx: &egui::Context,
         _frame: &epi::Frame,
-        _storage: Option<&dyn epi::Storage>,
+        storage: Option<&dyn epi::Storage>,
     ) {
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        #[cfg(feature = "persistence")]
-        if let Some(storage) = _storage {
-            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
+        if let Some(storage) = storage {
+            //*self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
         }
     }
 
-    /// Called by the frame work to save state before shutdown.
-    /// Note that you must enable the `persistence` feature for this to work.
-    #[cfg(feature = "persistence")]
     fn save(&mut self, storage: &mut dyn epi::Storage) {
-        epi::set_value(storage, epi::APP_KEY, self);
+        //epi::set_value(storage, epi::APP_KEY, self);
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &epi::Frame) {
-        //let Self { label, value } = self;
-
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
@@ -229,34 +237,52 @@ impl epi::App for ZoomApp {
             });
         });
 
-        if false { // found students
+        if self.get_state() == State::ToSelect || self.get_state() == State::Selected { // found students
             egui::SidePanel::left("side_panel").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("Students");
-                    ui.spacing_mut().item_spacing.y = 15.0;
+                ui.spacing_mut().item_spacing.y = 18.0;
+                ui.heading("Students");
+                ui.spacing_mut().item_spacing.y = 12.0;
+                ui.vertical_centered_justified(|ui| {
+                    for student in self.student_map.keys() {
+                        ui.label(student);
+                    }
                 });
             });
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 15.0;
-            if true { // no zoom file
-                ui.heading("Zoom Chat Interperter");
-                ui.label("This program helps you analyse all messeges sent by students on zoom. Specify where this document is located. To gain the chat data there is a export option on zoom.");
-                if ui.button("Select Chat Folder").clicked() {
-                    self.open_folder();
-                }
+            match self.state {
+                State::NonSelected => {
+                    ui.heading("Zoom Chat Interperter");
+                    ui.label("This program helps you analyse all messeges sent by students on zoom. Specify where this document is located. To gain the chat data there is a export option on zoom.");
+                    if ui.button("Select Chat Folder").clicked() {
+                        self.open_folder();
+                    }
+                    egui::warn_if_debug_build(ui);
+                },
+                State::ToSelect => {
+                    ui.heading("Select A Student...");
+                },
+                State::Selected => {
+                    
+                },
+                State::NoOneFound => {
+                    ui.heading("No Student Found...");
+                    if ui.button("Select Chat Folder").clicked() {
+                        self.open_folder();
+                    }
+                },
             }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
                     ui.centered_and_justified(|ui| {
                         ui.label("© Shalev Haimovitz. All rights reserved.");
+                        ui.hyperlink_to("github", "https://github.com/daslastic");
                     });
-                    //ui.hyperlink_to("github", "https://github.com/daslastic");
                 });
             });
-            egui::warn_if_debug_build(ui);
         });
 
         //egui::Window::new("User Manual").show(ctx, |ui| {
