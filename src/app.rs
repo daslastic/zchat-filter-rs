@@ -120,7 +120,6 @@ impl ZoomApp {
                     let teacher = &teacher_buf.replace("'s Personal Meeting Room", "");
 
                     // loop through all the text documents
-
                     for meeting in fs::read_dir(zoom_meeting.path()).unwrap() {
                         let meeting = meeting.unwrap();
                         if meeting.file_name().into_string().unwrap() == "meeting_saved_chat.txt" {
@@ -136,7 +135,6 @@ impl ZoomApp {
 
     fn interpret_file(&mut self, path: PathBuf, teachers_name: &str) {
         let file = fs::File::open(&path).unwrap();
-        // set back to 0 as none should have been interpered
         self.total_messeges = 0;
 
         // read each lines to filter out only the students messeges
@@ -144,7 +142,6 @@ impl ZoomApp {
         let mut time = String::new();
 
         for line in io::BufReader::new(&file).lines() {
-            // a line
             if line.is_ok() {
                 let line = line.unwrap();
                 let mut is_filter = false;
@@ -230,7 +227,6 @@ impl epi::App for ZoomApp {
         "Zoom-Chat Interperter"
     }
 
-    /// Called once before the first frame.
     fn setup(
         &mut self,
         ctx: &egui::Context,
@@ -249,27 +245,13 @@ impl epi::App for ZoomApp {
             index: 0,
             tweak: FontTweak::default(),
         };
-        let poppins_bold = FontData {
-            font: std::borrow::Cow::Borrowed(include_bytes!("../fonts/Poppins-Bold.ttf")),
-            index: 1,
-            tweak: FontTweak::default(),
-        };
 
         fonts.font_data.insert("Poppins".to_owned(), poppins);
-        fonts
-            .font_data
-            .insert("Poppins-Bold".to_owned(), poppins_bold);
-        fonts
-            .families
-            .get_mut(&FontFamily::Monospace)
-            .unwrap()
-            .insert(0, "Poppins-Bold".to_owned());
         fonts
             .families
             .get_mut(&FontFamily::Proportional)
             .unwrap()
             .insert(0, "Poppins".to_owned());
-
         ctx.set_fonts(fonts);
     }
 
@@ -281,7 +263,6 @@ impl epi::App for ZoomApp {
         ctx.set_pixels_per_point(self.scale);
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Select Chat Folder").clicked() {
@@ -362,13 +343,12 @@ impl epi::App for ZoomApp {
                         ui.heading(&student_name);
                         let student = &self.student_map.get(&student_name).unwrap();
 
-                        ui.spacing_mut().item_spacing.y = 5.0;
+                        ui.spacing_mut().item_spacing.y = 20.0;
                         ui.horizontal(|ui| {
                             ui.label("Filter: ");
                             ui.text_edit_singleline(&mut self.filter_query);
                         });
 
-                        ui.spacing_mut().item_spacing.y = 12.0;
                         ui.horizontal(|ui| {
                             let freq_count = student.borrow().len()/self.total_messeges;
                             let mut freq = String::new();
@@ -376,7 +356,6 @@ impl epi::App for ZoomApp {
                             freq.push_str(&*freq_count.to_string());
                             freq.push_str("%");
                             ui.label(freq);
-    
                             ui.label("-");
 
                             let av_freq_count = self.student_map.keys().len()/self.total_messeges;
@@ -389,6 +368,7 @@ impl epi::App for ZoomApp {
 
                         ui.vertical(|ui| {
                             egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.spacing_mut().item_spacing.y = 12.0;
                                 student.borrow().iter().for_each(| messege | {
                                     let mut final_msg = String::new();
                                     if self.filter_query.len() > 0 {
@@ -404,7 +384,7 @@ impl epi::App for ZoomApp {
                                         final_msg.push_str(&student_name);
                                         final_msg.push_str(" at ");
                                         final_msg.push_str(&messege.time);
-                                        final_msg.push_str(" : ");
+                                        final_msg.push_str("\n");
                                         final_msg.push_str(&messege.data);
                                         ui.label(final_msg);
                                     }
