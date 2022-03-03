@@ -10,7 +10,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-eframe = "0.17.0"
+eframe = { version = "0.17.0", features = ["persistence"] }
 native-dialog = "0.5.1"
 
 serde = { version = "1", features = ["derive"], optional = true }
