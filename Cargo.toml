@@ -12,14 +12,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 eframe = { version = "0.17.0", features = ["persistence"] }
 native-dialog = "0.5.1"
-
-serde = { version = "1", features = ["derive"], optional = true }
-
-[features]
-default = []
-persistence = ["eframe/persistence", "serde"]
+serde = "1.0"
+serde_derive = "0.9"
 
 [profile.release]
 opt-level = 2
-
-[patch.crates-io]

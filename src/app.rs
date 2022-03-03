@@ -4,6 +4,7 @@ use eframe::{
     epi,
 };
 use native_dialog::{FileDialog, MessageDialog, MessageType};
+use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -15,12 +16,13 @@ use std::{
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[cfg_attr(feature = "persistence", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "persistence", serde(default))] // if we add new fields, give them default values when deserializing old state
+#[derive(Serialize, Deserialize, Clone, Copy)]
 enum Theme {
     Dark,
     Light,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum State {
     NonSelected,
     ToSelect,
@@ -28,18 +30,21 @@ pub enum State {
     NoOneFound,
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
 struct Messege {
     pub data: String,
     time: String,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct ZoomApp {
     theme: Theme,
     student_map: HashMap<String, RefCell<Vec<Messege>>>,
     state: State,
     selected_student: Option<String>,
     filter_query: String,
+    total_messeges: usize,
+    scale: f32,
 }
 
 impl ZoomApp {
@@ -55,10 +60,6 @@ impl ZoomApp {
                 ctx.set_visuals(Visuals::light());
             }
         }
-    }
-
-    pub fn filter_mut(&mut self) -> &mut String {
-        &mut self.filter_query
     }
 
     fn open_folder(&mut self) {
@@ -135,6 +136,8 @@ impl ZoomApp {
 
     fn interpret_file(&mut self, path: PathBuf, teachers_name: &str) {
         let file = fs::File::open(&path).unwrap();
+        // set back to 0 as none should have been interpered
+        self.total_messeges = 0;
 
         // read each lines to filter out only the students messeges
         let mut name = String::new();
@@ -192,6 +195,7 @@ impl ZoomApp {
                                 }]),
                             );
                         }
+                        self.total_messeges += 1;
                     }
                 }
             }
@@ -215,6 +219,8 @@ impl Default for ZoomApp {
             state: State::NonSelected,
             selected_student: None,
             filter_query: String::new(),
+            total_messeges: 0,
+            scale: 2.0,
         }
     }
 }
@@ -229,11 +235,13 @@ impl epi::App for ZoomApp {
         &mut self,
         ctx: &egui::Context,
         _frame: &epi::Frame,
-        _storage: Option<&dyn epi::Storage>,
+        storage: Option<&dyn epi::Storage>,
     ) {
-        //if let Some(storage) = storage {
-        //    //*self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
-        //}
+        if let Some(storage) = storage {
+            *self = epi::get_value(storage, epi::APP_KEY).unwrap_or_default()
+        }
+
+        self.swap_theme(ctx, self.theme.clone());
 
         let mut fonts = egui::FontDefinitions::default();
         let poppins = FontData {
@@ -265,12 +273,13 @@ impl epi::App for ZoomApp {
         ctx.set_fonts(fonts);
     }
 
-    //fn save(&mut self, storage: &mut dyn epi::Storage) {
-    //    //epi::set_value(storage, epi::APP_KEY, self);
-    //    
-    //}
+    fn save(&mut self, storage: &mut dyn epi::Storage) {
+        epi::set_value(storage, epi::APP_KEY, self);
+    }
 
     fn update(&mut self, ctx: &egui::Context, frame: &epi::Frame) {
+        ctx.set_pixels_per_point(self.scale);
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
@@ -291,6 +300,15 @@ impl epi::App for ZoomApp {
                             Theme::Light => {
                                 self.swap_theme(ctx, Theme::Dark);
                             }
+                        }
+                    }
+
+                    if ui.button("Zoom in +").clicked() {
+                        self.scale += 0.1;
+                    }
+                    if ui.button("Zoom out -").clicked() {
+                        if !(self.scale < 0.5) {
+                            self.scale -= 0.1;
                         }
                     }
                 });
@@ -342,13 +360,34 @@ impl epi::App for ZoomApp {
                     } else {
                         let student_name = self.selected_student.clone().unwrap();
                         ui.heading(&student_name);
+                        let student = &self.student_map.get(&student_name).unwrap();
+
+                        ui.spacing_mut().item_spacing.y = 5.0;
                         ui.horizontal(|ui| {
                             ui.label("Filter: ");
-                            ui.text_edit_singleline(self.filter_mut());
+                            ui.text_edit_singleline(&mut self.filter_query);
                         });
+
                         ui.spacing_mut().item_spacing.y = 12.0;
+                        ui.horizontal(|ui| {
+                            let freq_count = student.borrow().len()/self.total_messeges;
+                            let mut freq = String::new();
+                            freq.push_str("Frequency: ");
+                            freq.push_str(&*freq_count.to_string());
+                            freq.push_str("%");
+                            ui.label(freq);
+    
+                            ui.label("-");
+
+                            let av_freq_count = self.student_map.keys().len()/self.total_messeges;
+                            let mut av_freq = String::new();
+                            av_freq.push_str("Average Frequency: ");
+                            av_freq.push_str(&*av_freq_count.to_string());
+                            av_freq.push_str("%");
+                            ui.label(av_freq);
+                        });
+
                         ui.vertical(|ui| {
-                            let student = &self.student_map.get(&student_name).unwrap();
                             egui::ScrollArea::vertical().show(ui, |ui| {
                                 student.borrow().iter().for_each(| messege | {
                                     let mut final_msg = String::new();
